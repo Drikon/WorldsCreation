@@ -193,12 +193,14 @@ void UUWorldSubsystem::CreateNewWorld(const TSoftObjectPtr<UWorld> Level, TSubcl
 	//NewWorld->WorldType = EWorldType::PIE;
 	WorldContext.SetCurrentWorld(NewWorld);
 
-	//NewWorld->AddController(GetMainWorld()->GetFirstPlayerController());
+	//NewWorld->AddController(GetMainWorldContext().ContextWorld->GetFirstPlayerController());
+	NewWorld->AddController(GetWorld()->GetFirstPlayerController());
 
 
-	auto context = GameInstance->GetWorldContext()->GameViewport;
+	// set viewport
+	//auto context = GameInstance->GetWorldContext()->GameViewport;
 	//ViewportClient->Init(*GameInstance->GetWorldContext(), GameInstance);
-	WorldContext.GameViewport = context;
+	//WorldContext.GameViewport = context;
 
 
 	// Add to root set so it doesn't get garbage collected.
@@ -237,8 +239,9 @@ void UUWorldSubsystem::CreateNewWorld(const TSoftObjectPtr<UWorld> Level, TSubcl
 
 	FURL URL;
 	//FURL URL(&WorldContext.LastURL, *NewWorld->GetFName().ToString(), ETravelType::TRAVEL_Absolute);
-	//URL.AddOption(TEXT("GAME=/Game/ThirdPersonCPP/Blueprints/BpGameMode2.BpGameMode2_C"));
-	URL.AddOption(TEXT("GAME=/Game/Blueprints/GameModeBP_CreatedWorld.GameModeBP_CreatedWorld_C"));
+	//URL.AddOption(TEXT("GAME=/Game/Blueprints/System/GameModeBP_CreatedWorld.GameModeBP_CreatedWorld_C"));
+	auto PathNameOptopn = FString("GAME=") + GameMode->GetPathName();
+	URL.AddOption(*PathNameOptopn);
 	WorldContext.World()->SetGameMode(URL);
 
 
@@ -309,59 +312,65 @@ void UUWorldSubsystem::CreateNewWorld(const TSoftObjectPtr<UWorld> Level, TSubcl
 	TickHandles.Add(NewWorld, TickHandle);
 
 
-	//auto CHandle = FWorldDelegates::OnPostWorldCleanup.AddLambda([NewWorld](UWorld* World, bool bSessionEnded, bool bCleanupResources) {
-	//	if (!CreatedWorlds.Contains(World)) {
-	//		;
-	//		auto CLHandle = CleanupHandles.Find(NewWorld);
-	//		if (CLHandle) {
-	//			FWorldDelegates::OnPostWorldCleanup.Remove(*CLHandle);
-	//			CLHandle->Reset();
-	//			CleanupHandles.Remove(NewWorld);
-	//		}
-	//		auto TickHand = TickHandles.Find(NewWorld);
-	//		if (TickHand && TickHand->IsValid()) {
-	//			FWorldDelegates::OnWorldTickStart.Remove(*TickHand);
-	//			TickHand->Reset();
-	//			TickHandles.Remove(NewWorld);
-	//		}
+	auto CHandle = FWorldDelegates::OnPostWorldCleanup.AddLambda([&, NewWorld](UWorld* World, bool bSessionEnded, bool bCleanupResources) {
+		if (!CreatedWorlds.Contains(World)) {
+
+			
+		
+
+			auto CLHandle = CleanupHandles.Find(NewWorld);
+			if (CLHandle) {
+				FWorldDelegates::OnPostWorldCleanup.Remove(*CLHandle);
+				CLHandle->Reset();
+				CleanupHandles.Remove(NewWorld);
+			}
+			auto TickHand = TickHandles.Find(NewWorld);
+			if (TickHand && TickHand->IsValid()) {
+				FWorldDelegates::OnWorldTickStart.Remove(*TickHand);
+				TickHand->Reset();
+				TickHandles.Remove(NewWorld);
+			}
 
 
-	//		if (NewWorld) {
-	//			auto Name = NewWorld->GetMapName();
-	//			for (FActorIterator ActorIt(NewWorld); ActorIt; ++ActorIt)
-	//			{
-	//				//ActorIt->RouteEndPlay(EEndPlayReason::LevelTransition);
-	//				ActorIt->Destroy();
-	//			}
+			if (NewWorld) {
+				auto Name = NewWorld->GetMapName();
+				for (FActorIterator ActorIt(NewWorld); ActorIt; ++ActorIt)
+				{
+					//ActorIt->RouteEndPlay(EEndPlayReason::LevelTransition);
+					ActorIt->Destroy();
+				}
 
-	//			// Do this after destroying pawns/playercontrollers, in case that spawns new things (e.g. dropped weapons)
-	//			//WorldRef->CleanupWorld();
+				// Do this after destroying pawns/playercontrollers, in case that spawns new things (e.g. dropped weapons)
+				//WorldRef->CleanupWorld();
 
-	//			//GEngine->WorldDestroyed(WorldRef);
+				//GEngine->WorldDestroyed(WorldRef);
 
-	//			CreatedWorlds.Remove(NewWorld);
+				CreatedWorlds.Remove(NewWorld);
 
-	//			GEngine->DestroyWorldContext(NewWorld);
-	//			NewWorld->DestroyWorld(true);
+				GEngine->DestroyWorldContext(NewWorld);
+				NewWorld->DestroyWorld(true);
 
-	//			//GEngine->TrimMemory();
-	//			//GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("Created World destroyed: %s"), *WorldRef->GetFName().ToString()));
-	//			UE_LOG(LogTemp, Warning, TEXT("Created World destroyed: %s"), *Name);
+				//GEngine->TrimMemory();
+				//GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("Created World destroyed: %s"), *WorldRef->GetFName().ToString()));
+				UE_LOG(LogTemp, Warning, TEXT("Created World destroyed: %s"), *Name);
 
-	//		}
+			}
 
 
-	//		//GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("DestroyedWorld: %s"), *World->GetFName().ToString()));
-	//		UE_LOG(LogTemp, Warning, TEXT("DestroyedWorld: %s"), *World->GetFName().ToString());
-	//	}
-	//	});
-	//CleanupHandles.Add(NewWorld, CHandle);
-	//}
+			//GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("DestroyedWorld: %s"), *World->GetFName().ToString()));
+			UE_LOG(LogTemp, Warning, TEXT("DestroyedWorld: %s"), *World->GetFName().ToString());
+		}
+		});
+	CleanupHandles.Add(NewWorld, CHandle);
+	
 
 
 	CreatedWorlds.Add(NewWorld);
 
-	UWorldContext.SetWorldContext(&WorldContext);
+	FUWorldContext ctx;
+	ctx.ContextWorld = NewWorld;
+	UWorldContext = ctx;
+	//UWorldContext.SetWorldContext(&WorldContext);
 	//World = NewWorld;
 	//
 	//
@@ -469,18 +478,47 @@ APlayerController* UUWorldSubsystem::ChangeWorld(FUWorldContext UWorldContext, A
 	if (!IsValid(NewWorld)) return nullptr;
 	auto WorldContext = GEngine->GetWorldContextFromWorld(NewWorld);
 
-	auto GameInstance = UGameplayStatics::GetGameInstance(GEngine->GetCurrentPlayWorld());
+	auto GameInstance = UGameplayStatics::GetGameInstance(MainWorld);
+	if (!GameInstance) {
+		UE_LOG(LogTemp, Warning, TEXT("UUWorldSubsystem::ChangeWorld - zero game instance in UWorld: %s"), *MainWorld->GetName());
+		return nullptr;
+	}
 	//auto context = GameInstance->GetWorldContext()->GameViewport;
 
 	//switch render to new UWorld
 	//NewWorld->GetGameViewport()->Init(*WorldContext, GameInstance);
-	Cast<UUWorldCommonGameViewportClient>(NewWorld->GetGameViewport())->ChangeRenderWorld(NewWorld);
+
+	//auto context = GameInstance->GetWorldContext()->GameViewport;
+	//GEngine->GameViewport;
+	//NewWorld->GetGameViewport()->Viewport 
+	//WorldContext.GameViewport = context;
+
+	//FWorldContext* WContext = GEngine->GetWorldContextFromWorld(NewWorld);
+	//WContext->GameViewport = GEngine->GameViewport;
+	auto WContext = GameInstance->GetWorldContext();
+	if (WContext) {
+		auto viewport = WContext->GameViewport;
+		if (IsValid(viewport)) {
+			WorldContext->GameViewport = viewport;
+		}
+	}
+
+	if (IsValid(NewWorld->GetGameViewport()) && IsValid(WorldContext->GameViewport) && NewWorld->GetGameViewport() != WorldContext->GameViewport) {
+		NewWorld->GetGameViewport()->Init(*WorldContext, GameInstance);
+	}
+	
+	auto vp = Cast<UUWorldCommonGameViewportClient>(NewWorld->GetGameViewport());
+	if (IsValid(vp)) {
+		vp->ChangeRenderWorld(NewWorld);
+	}
+	
+
 
 	//find PC in worlds
 	APlayerController* PC = nullptr;
 
-	//if (MainWorld != NewWorld && !IsValid(NewWorld->GetFirstPlayerController())) {
-		NewWorld->AddController(GEngine->GetCurrentPlayWorld()->GetFirstPlayerController());
+	//if (!NewWorld->GetFirstPlayerController()) {
+	//	NewWorld->AddController(GEngine->GetCurrentPlayWorld()->GetFirstPlayerController());
 	//}
 
 	//if (MainWorld == NewWorld) {
